@@ -13,45 +13,17 @@ using System.Linq;
 using System.Windows.Forms;
 namespace InputsBuilder.Controls
 {
-    public partial class AddCounter : Form
+    public partial class PerfCounterTreeView : TreeListView
     {
-        public BindingList<Splunk_Index> Indexes;
-        public BindingList<SelectedCategory> Categories;
 
-        public AddCounter()
-        {
-            InitializeComponent();
-
-            this.Indexes = new BindingList<Splunk_Index>();
-            this.Categories = new BindingList<SelectedCategory>();
-
-            this.Indexes.Add(new Splunk_Index
-            {
-                Name = "Perfmon",
-                RetentionDays = 90
-            });
-
-            var tree = new TreeListView
-            {
-                UseSubItemCheckBoxes = true,
-                HierarchicalCheckboxes = true,
-                CellEditActivation = ObjectListView.CellEditActivateMode.DoubleClick,
-                CellEditTabChangesRows = true,
-
-            };
-
-            foreach (var cat in PerformanceCounterCategory.GetCategories().Where(o => o.GetInstanceNames().Length > 0).Select(o => new SelectedCategory { Category = o, Index = Indexes.First(), Metric_Prefix = MetricNameLookup.Category(o.CategoryName) }))
-                this.Categories.Add(cat);
-
-            //Bind the list to the tree.
-            tree.SetObjects(this.Categories);
-
+        public PerfCounterTreeView(BindingList<Splunk_Index> Indexes)
+        {     
             #region Add Columns
-            tree.Columns.AddRange(new ColumnHeader[] {
+            this.Columns.AddRange(new ColumnHeader[] {
                 new BrightIdeasSoftware.OLVColumn
                 {
                     Text = "Category",
-                    Name = "Repo",
+                    Name = "Repo",                    
                     //CheckBoxes = true,
                     AspectGetter = delegate(object x)
                     {
@@ -143,15 +115,16 @@ namespace InputsBuilder.Controls
                     },
                 }
             });
-            tree.Roots = tree.Objects;
-            tree.CanExpandGetter = delegate (object x)
+            #endregion
+            #region Expand / Children
+            this.CanExpandGetter = delegate (object x)
             {
                 if (x is SelectedCategory sel && sel.Category.GetInstanceNames().Length > 0)
                     return true;
 
                 return false;
             };
-            tree.ChildrenGetter = delegate (object x)
+            this.ChildrenGetter = delegate (object x)
             {
                 if (x is SelectedCategory sel)
                     if (sel.Category.CategoryType == PerformanceCounterCategoryType.SingleInstance)
@@ -178,7 +151,7 @@ namespace InputsBuilder.Controls
             };
             #endregion
             #region Editing
-            tree.CellEditStarting += delegate (object sender, CellEditEventArgs e)
+            CellEditStarting += delegate (object sender, CellEditEventArgs e)
             {
                 switch (e.RowObject)
                 {
@@ -226,7 +199,7 @@ namespace InputsBuilder.Controls
                             case "MetricName":
                                 {
                                     var acsc = new AutoCompleteStringCollection();
-                                    var choices = this.Categories.Select(o => o.Metric_Prefix).Distinct().Where(o => o != null).ToArray();
+                                    var choices = this.Objects.OfType<SelectedCategory>().Select(o => o.Metric_Prefix).Distinct().Where(o => o != null).ToArray();
                                     acsc.AddRange(choices);
                                     e.Control = new TextBox()
                                     {
@@ -305,7 +278,7 @@ namespace InputsBuilder.Controls
                     //e.Control = cce;
                 }
             };
-            tree.CellEditFinished += delegate (object sender, CellEditEventArgs e)
+            CellEditFinished += delegate (object sender, CellEditEventArgs e)
             {
                 switch (e.RowObject)
                 {
@@ -350,13 +323,7 @@ namespace InputsBuilder.Controls
             };
             #endregion
 
-
-            tree.Sort("Category");
-
-            //Add the tree to this form.
-            this.Width = 1000;
-            this.Controls.Add(tree);
-            tree.Dock = DockStyle.Fill;
+            Sort("Category");
         }
     }
 }
