@@ -8,6 +8,7 @@
         public static Metric_Descriptor Available => new Metric_Descriptor("available");
         public static Metric_Descriptor Average => new Metric_Descriptor("avg");
         public static Metric_Descriptor Closed => new Metric_Descriptor("closed");
+        public static Metric_Descriptor Committed => new Metric_Descriptor("committed");
         public static Metric_Descriptor Completed => new Metric_Descriptor("completed");
         public static Metric_Descriptor Count => new Metric_Descriptor("count");
         public static Metric_Descriptor Created => new Metric_Descriptor("created");

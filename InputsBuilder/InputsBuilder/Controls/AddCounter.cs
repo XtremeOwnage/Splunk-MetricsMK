@@ -134,7 +134,7 @@ namespace InputsBuilder.Controls
                 {
                     Text = "Metric Name",
                     Name = "MetricNameFull",
-                    Width = 100,
+                    Width = 200,
                     AspectGetter = delegate(object x)
                     {
                         if(x is SelectedCounter count)
@@ -169,7 +169,7 @@ namespace InputsBuilder.Controls
                                         Counter = o.Key,
                                         InstanceCount = o.Count(),
                                         Selected = false,
-                                        MetricName = MetricNameLookup.Counter(o.Key)
+                                        MetricName = MetricNameLookup.Counter(sel.Category.CategoryName, o.Key)
                                     });
 
 
