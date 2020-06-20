@@ -12,24 +12,63 @@ namespace InputsBuilder.ConfigBuilders
         const string transformPrefix = "PerfmonMK_To_MetricMK:";
         const string defaultTransformName = "Schema";
 
-        public static string InputsConf(IEnumerable<Models.SelectedCategory> Data)
+        public static Models.ConfigurationData GenerateConfigurationStrings(IEnumerable<Models.SelectedCategory> Data)
+        {
+            return new Models.ConfigurationData
+            {
+                Indexes = indexes(Data),
+                Inputs = inputs(Data),
+                Props = props(Data),
+                Transforms = transforms(Data),
+            };
+        }
+        private static string indexes(IEnumerable<Models.SelectedCategory> Data)
         {
             var sb = new StringBuilder();
 
             //Select every category with any selected counter. Order by name.
-            foreach (var cat in Data.Where(o => o.SelectedCounters.Any(counter => counter.Selected)).OrderBy(o => o.Category.CategoryName))
+            foreach (var cat in Data.Select(o => o.Index).Distinct())
+            {
+                //Convert retention days, into seconds.
+
+                sb.AppendLine($@"[{cat.Name}]
+coldPath = $SPLUNK_DB\$_index_name\colddb
+enableDataIntegrityControl = 0
+enableTsidxReduction = 0
+datatype = metric
+homePath = $SPLUNK_DB\$_index_name\db
+thawedPath = $SPLUNK_DB\$_index_name\thaweddb");
+                if (cat.RetentionDays.HasValue)
+                {
+                    var retentionSecs = cat.RetentionDays.Value * 24 * 60 * 60;
+                    sb.AppendLine($"retention = { retentionSecs }");
+                }
+                if (cat.MaxDataSizeMB.HasValue)
+                    sb.AppendLine($"maxTotalDataSizeMB = {cat.MaxDataSizeMB}");
+
+            }
+
+            return sb.ToString();
+        }
+
+        private static string inputs(IEnumerable<Models.SelectedCategory> Data)
+        {
+            var sb = new StringBuilder();
+
+            //Select every category with any selected counter. Order by name.
+            foreach (var cat in Data.Where(o => o.Counters.Any(counter => counter.Checked)).OrderBy(o => o.Category.CategoryName))
             {
                 sb.AppendLine($@"
 [perfmon://{inputPrefix}{cat.Category.CategoryName}]
-counters = {string.Join("; ", cat.SelectedCounters.Where(o => o.Selected).OrderBy(o => o.Counter).Select(o => o.Counter))}
+counters = {string.Join("; ", cat.Counters.Where(o => o.Checked).OrderBy(o => o.Name).Select(o => o.Name))}
 object = {cat.Category.CategoryName}
 instances = *
 disabled = 0
 interval = {cat.CollectionIntervalSeconds}
 mode=multikv
 useEnglishOnly = true
-index = {cat.Index}
-showZeroValue=1
+index = {cat.Index.Name}
+showZeroValue = 1
 sourcetype = {sourceTypePrefix}{cat.Category.CategoryName}
 
 ");
@@ -38,12 +77,12 @@ sourcetype = {sourceTypePrefix}{cat.Category.CategoryName}
             return sb.ToString();
         }
 
-        public static string PropsConf(IEnumerable<Models.SelectedCategory> Data)
+        private static string props(IEnumerable<Models.SelectedCategory> Data)
         {
             var sb = new StringBuilder();
 
             //Select every category with any selected counter. Order by name.
-            foreach (var cat in Data.Where(o => o.SelectedCounters.Any(counter => counter.Selected)).OrderBy(o => o.Category.CategoryName))
+            foreach (var cat in Data.Where(o => o.Counters.Any(counter => counter.Checked)).OrderBy(o => o.Category.CategoryName))
             {
                 sb.AppendLine($@"
 [{sourceTypePrefix}{cat.Category.CategoryName}]
@@ -52,7 +91,7 @@ LINE_BREAKER = ([\r\n]+)
 NO_BINARY_CHECK = 1
 category = Log To Metrics
 pulldown_type = 1
-METRIC-SCHEMA-TRANSFORMS = {transformPrefix}{defaultTransformName}
+METRIC-SCHEMA-TRANSFORMS = metric-schema:{defaultTransformName}
 TRANSFORMS-perfmonmk = {transformPrefix}{cat.Category.CategoryName}
 ");
             }
@@ -60,12 +99,13 @@ TRANSFORMS-perfmonmk = {transformPrefix}{cat.Category.CategoryName}
             return sb.ToString();
         }
 
-        public static string TransformsConf(IEnumerable<Models.SelectedCategory> Data)
+        private static string transforms(IEnumerable<Models.SelectedCategory> Data)
         {
+            const string rex_AnythingExceptTab = @"([^\t]+)\t";
             //This one is used by all of the props.
             var sb = new StringBuilder()
                 .AppendLine($@"
-[{transformPrefix}{defaultTransformName}]
+[metric-schema:{defaultTransformName}]
 #The OLD way
 #METRIC-SCHEMA-MEASURES = _ALLNUMS_
 
@@ -75,19 +115,48 @@ METRIC-SCHEMA-WHITELIST-DIMS = instance, object
 ");
 
             //Select every category with any selected counter. Order by name.
-            foreach (var cat in Data.Where(o => o.SelectedCounters.Any(counter => counter.Selected)).OrderBy(o => o.Category.CategoryName))
+            var categories = Data.Where(o => o.Counters.Any(counter => counter.Checked))
+                .OrderBy(o => o.Category.CategoryName);
+            foreach (var cat in categories)
             {
+                int cnt = cat.Counters.Where(o => o.Checked).Count();
                 sb.AppendLine($@"
-[{sourceTypePrefix}{cat.Category.CategoryName}]
-INDEXED_EXTRACTIONS = tsv
-LINE_BREAKER = ([\r\n]+)
-NO_BINARY_CHECK = 1
-category = Log To Metrics
-pulldown_type = 1
-METRIC-SCHEMA-TRANSFORMS = metric-schema:PerfmonMK_To_MetricMK_AUTO
-TRANSFORMS-perfmonmk = {transformPrefix}{cat.Category.CategoryName}
-");
+[{transformPrefix}{cat.Category.CategoryName}]
+WRITE_META = 1");
+                #region Build REGEX
+                //Append the static part of the REGEX
+                sb.Append(@"REGEX = collection=\""?(?<collection>[^\""\n]+)\""?\ncategory=\""?(?<category>[^\""\n]+)\""?\nobject=\""?(?<object>[^\""\n]+)\""?\n");
+
+                //Build the dynamic part of the regex.
+                //Description- Repeats {rex_AnythingExceptTab} N types, where N = number of counters.
+                // + 1 is present, to account for the instance field.
+                var rex = string.Concat(Enumerable.Repeat(rex_AnythingExceptTab, cnt + 1));
+
+                //This matches the field names in the headers.
+                sb.Append(rex);
+
+                //Drops to the next line, which contains the actual values.
+                sb.Append(@"\n");
+
+                //This matches the values.
+                sb.Append(rex);
+
+                //This matches the end
+                sb.AppendLine(@"\n");
+                #endregion
+                #region Build FORMAT
+                sb.Append(@$"FORMAT = collection::""$1"" category::""$2"" object::""$3"" instance::""${ cnt + 5}"" ");
+
+                for (int i = 0; i < cnt; i++)
+                {
+                    sb.Append(@$"""${5 + i}""::""${cnt + i + 6}"" ");
+                }
+
+                //Append two extra lines.... to clean up the file.
+                sb.AppendLine().AppendLine();
+                #endregion
             }
+
 
             return sb.ToString();
         }

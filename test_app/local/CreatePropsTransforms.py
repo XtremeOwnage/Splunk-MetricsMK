@@ -59,9 +59,7 @@ for input_stanza in file_inputs_conf.sections():
         transform_perf_REGEX_Pre = r'collection=\"?([^\"\n]+)\"?\ncategory=\"?([^\"\n]+)\"?\nobject=\"?([^\"\n]+)\"?\n'
         transform_perf_FORMAT = f'collection::"$1" category::"$2" object::"$3" instance::"${totalitems + 5}" '
         transform_perf_REGEX = r"([^\t]+)\t"
-        ##Strip out spaces, and trim the counter name.
-        for idx, item in enumerate(input_counters_modified):            
-            input_counters_modified[idx] = item.strip().replace(' ', '_')
+
 
         #Start building the wonderful regex!
         for idx, x in  enumerate(input_counters_unmodified):

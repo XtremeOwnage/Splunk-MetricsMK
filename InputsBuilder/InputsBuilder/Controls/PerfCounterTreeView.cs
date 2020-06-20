@@ -17,7 +17,7 @@ namespace InputsBuilder.Controls
     {
 
         public PerfCounterTreeView(BindingList<Splunk_Index> Indexes)
-        {     
+        {
             #region Add Columns
             this.Columns.AddRange(new ColumnHeader[] {
                 new BrightIdeasSoftware.OLVColumn
@@ -28,9 +28,9 @@ namespace InputsBuilder.Controls
                     AspectGetter = delegate(object x)
                     {
                         if (x is SelectedCategory cat)
-                            return  cat.Category.CategoryName;
+                            return  cat.Name;
                         if(x is SelectedCounter count)
-                            return count.Counter;
+                            return count.Name;
                         return null;
                     },
                     MinimumWidth = 30 * 12,
@@ -45,8 +45,8 @@ namespace InputsBuilder.Controls
                     {
                         if (x is SelectedCategory cat)
                             return cat.Category.GetInstanceNames().Length;
-                        if(x is SelectedCounter count)
-                            return count.InstanceCount;
+                        //if(x is SelectedCounter count)
+                        //    return count.InstanceCount;
                         return null;
                     },
                 },
@@ -78,13 +78,25 @@ namespace InputsBuilder.Controls
                 },
                 new OLVColumn
                 {
-                    Text = "Retention",
-                    Name = "Retention",
+                    Text = "Retention (Days)",
+                    Name = "RetentionDays",
                     Width = 100,
                     AspectGetter = delegate(object x)
                     {
                         if(x is SelectedCategory sel)
-                            return sel.Index!=null ? sel.Index?.RetentionDays.Days().Humanize() : null;
+                            return sel.Index?.RetentionDays?.Days().Humanize(maxUnit: Humanizer.Localisation.TimeUnit.Day) ?? "Not Set";
+                        return null;
+                    },
+                },
+                new OLVColumn
+                {
+                    Text = "Retention (MB)",
+                    Name = "RetentionSize",
+                    Width = 100,
+                    AspectGetter = delegate(object x)
+                    {
+                        if(x is SelectedCategory sel)
+                            return sel.Index?.MaxDataSizeMB?.Megabytes().Humanize() ?? "Not Set";
                         return null;
                     },
                 },
@@ -127,25 +139,10 @@ namespace InputsBuilder.Controls
             this.ChildrenGetter = delegate (object x)
             {
                 if (x is SelectedCategory sel)
-                    if (sel.Category.CategoryType == PerformanceCounterCategoryType.SingleInstance)
-                        return sel.Category.GetCounters();
-                    else if (sel.Category.CategoryType == PerformanceCounterCategoryType.MultiInstance)
-                        return sel.Category.GetInstanceNames()
-                                    //I assume the counters will remain the same between instances.
-                                    //This was put in to prevent... issues when accessing categories with many instances... such as "thread".
-                                    .Take(1)
-                                    .SelectMany(o => sel.Category.GetCounters(o))
-                                    .GroupBy(o => o.CounterName)
-                                    .Select(o => new SelectedCounter
-                                    {
-                                        Category = sel,
-                                        Counter = o.Key,
-                                        InstanceCount = o.Count(),
-                                        Selected = false,
-                                        MetricName = MetricNameLookup.Counter(sel.Category.CategoryName, o.Key)
-                                    });
-
-
+                {
+                    sel.Expand();
+                    return sel.Counters;
+                }
 
                 return null;
             };
@@ -168,14 +165,24 @@ namespace InputsBuilder.Controls
                                     Value = cat.CollectionIntervalSeconds,
                                 };
                                 break;
-                            case "Retention":
+                            case "RetentionDays":
                                 e.Control = new System.Windows.Forms.NumericUpDown()
                                 {
                                     Bounds = e.CellBounds,
-                                    Minimum = 1,
+                                    Minimum = 0,
                                     DecimalPlaces = 0,
                                     Maximum = int.MaxValue,
-                                    Value = cat.Index.RetentionDays,
+                                    Value = cat.Index.RetentionDays ?? 0,
+                                };
+                                break;
+                            case "RetentionSize":
+                                e.Control = new System.Windows.Forms.NumericUpDown()
+                                {
+                                    Bounds = e.CellBounds,
+                                    Minimum = 0,
+                                    DecimalPlaces = 0,
+                                    Maximum = int.MaxValue,
+                                    Value = cat.Index.RetentionDays ?? 0,
                                 };
                                 break;
                             case "Index":
@@ -271,12 +278,6 @@ namespace InputsBuilder.Controls
                         e.Cancel = true;
                         return;
                 }
-                {
-                    //ColorCellEditor cce = new ColorCellEditor();
-                    //cce.Bounds = e.CellBounds;
-                    //cce.Value = e.Value;
-                    //e.Control = cce;
-                }
             };
             CellEditFinished += delegate (object sender, CellEditEventArgs e)
             {
@@ -288,8 +289,21 @@ namespace InputsBuilder.Controls
                             case "Interval":
                                 cat.CollectionIntervalSeconds = (int)((NumericUpDown)e.Control).Value;
                                 return;
-                            case "Retention":
-                                cat.Index.RetentionDays = (int)((NumericUpDown)e.Control).Value;
+                            case "RetentionDays":
+                                {
+                                    //The control cannot possible return a null value....
+                                    //But, this does keep the compiler happy for the following line.
+                                    var value = (int?)((NumericUpDown)e.Control).Value;
+                                    cat.Index.RetentionDays = value == 0 ? null : value;
+                                }
+                                return;
+                            case "RetentionSize":
+                                {
+                                    //The control cannot possible return a null value....
+                                    //But, this does keep the compiler happy for the following line.
+                                    var value = (int?)((NumericUpDown)e.Control).Value;
+                                    cat.Index.MaxDataSizeMB = value == 0 ? null : value;
+                                }
                                 return;
                             case "Index":
                                 var ctrl = (TextBox)e.Control;
@@ -322,8 +336,27 @@ namespace InputsBuilder.Controls
                 }
             };
             #endregion
+            #region Checkboxes
+            this.BooleanCheckStateGetter = delegate (object x)
+            {
+                if (x is SelectedCategory sel)
+                    //If counters == 0, means this category has not yet been expanded.... instead of checking it- expand it.
+                    return sel.Checked;
+                else if (x is SelectedCounter cnt)
+                    return cnt.Checked;
+                else
+                    return false;
+            };
 
-            Sort("Category");
+            this.BooleanCheckStatePutter = delegate (object x, bool value)
+            {
+                if (x is SelectedCategory sel)
+                    sel.Checked = value;
+                else if (x is SelectedCounter cnt)
+                    cnt.Checked = value;
+                return value;
+            };
+            #endregion
         }
     }
 }

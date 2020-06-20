@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -42,7 +43,8 @@ namespace InputsBuilder
                 Height = this.Height - menuStrip1.Height,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Bottom | AnchorStyles.Right,
                 UseSubItemCheckBoxes = true,
-                HierarchicalCheckboxes = true,
+                CheckBoxes = true,
+                HierarchicalCheckboxes = false,
                 CellEditActivation = BrightIdeasSoftware.ObjectListView.CellEditActivateMode.DoubleClick,
                 CellEditTabChangesRows = true,
                 Roots = Categories,
@@ -52,6 +54,46 @@ namespace InputsBuilder
             this.Controls.Add(tree);
 
             tree.SetObjects(Categories);
+            tree.Sort("Category");
+
+            this.saveToolStripMenuItem.Click += delegate (object sender, EventArgs e)
+            {
+                //Make sure they have selected a few counters.
+                if (!Categories.Any(o => o.Counters.Any(counter => counter.Checked)))
+                {
+                    MessageBox.Show("Please select counters to generate...");
+                    return;
+                }
+
+                //Next- select a location to save the config files to.
+                FolderBrowserDialog dialog = new FolderBrowserDialog
+                {
+                    Description = "Select location to store new configuration files. Warning- will overwrite existing files.",
+                    ShowNewFolderButton = true,
+                };
+
+                //Cancelled.
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                //Lets..... generate some configs...
+                Models.ConfigurationData configs = ConfigBuilders.ConfigBuilder.GenerateConfigurationStrings(Categories);
+
+                //and... save them.
+
+                using (var file = File.CreateText(Path.Combine(dialog.SelectedPath, "indexes.conf")))
+                    file.Write(configs.Indexes);
+                using (var file = File.CreateText(Path.Combine(dialog.SelectedPath, "inputs.conf")))
+                    file.Write(configs.Inputs);
+                using (var file = File.CreateText(Path.Combine(dialog.SelectedPath, "props.conf")))
+                    file.Write(configs.Props);
+                using (var file = File.CreateText(Path.Combine(dialog.SelectedPath, "transforms.conf")))
+                    file.Write(configs.Transforms);
+
+                //Open up the resulting folder.
+                Process.Start("explorer.exe", dialog.SelectedPath);
+
+            };
 
         }
 
