@@ -37,5 +37,11 @@
         public static Metric_Child_Object ThreadPool => new Metric_Child_Object("threadpool");
         public static Metric_Child_Object Uptime => new Metric_Child_Object("uptime");
         public static Metric_Child_Object Users => new Metric_Child_Object("users");
+
+
+        //public Metric_Child_Object? TryParse(string Input)
+        //{
+
+        //}
     }
 }

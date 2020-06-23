@@ -33,6 +33,13 @@ namespace InputsBuilder.Models
         /// A flag which keeps track if we have loaded the counmters for the category yet.
         /// </summary>
         private bool loaded = false;
+        public void Reload()
+        {
+            this.Counters.Clear();
+            this.loaded = false;
+            Expand();
+
+        }
         public void Expand()
         {
             if (loaded)

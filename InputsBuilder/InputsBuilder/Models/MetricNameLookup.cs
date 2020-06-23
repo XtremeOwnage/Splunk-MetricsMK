@@ -67,12 +67,79 @@ namespace InputsBuilder.Models
 
 
 
+
+
             int cnt = Pieces.Length;
 
             //Empty ?
             if (Pieces.Length == 0)
                 return null;
 
+            #region The NEW Way...            
+            //Lets make a copy of the array, as a list, so that we can remove the pieces we are done using.
+            var list = Pieces.ToList();
+
+            //Create a linked list, to allow us to add/remove items at any location pretty easily.
+            LinkedList<string> name = new LinkedList<string>();
+
+            //Every metric should contain a "Unit". Bytes/Time/Pct... etc. This lets the user know what the metric is measured in.
+            Metric_Unit? Unit = null;
+            //SOME, not all, units will contain a descriptor. Avg, Min, Max, etc...
+            Metric_Descriptor? Unit_Descriptor = null;
+
+
+            //Try and determine the unit.
+            if (list[0] == "%")
+            {
+                Unit = Metric_Unit.Percent;
+                list.RemoveAt(0);
+            }
+            else
+            {
+
+            }
+
+            //Determine if there is a descriptor attached.
+            if (list[0] == "avg.")
+            {
+                Unit_Descriptor = Metric_Descriptor.Average;
+                list.RemoveAt(0);
+            }
+
+            //Bytes/sec
+            //Sec/read
+            //Transisitions/sec
+            //etc...... make those values into something "readable"
+            if (list.Last().Contains('/'))
+            {
+                var couldParse = parseTwoPart(list.Last());
+
+                if (couldParse.Success)
+                {
+                    name.AddLast(couldParse.Name);
+
+                    list.RemoveAt(list.Count - 1);
+                }
+                else
+                {
+                    //Do something here?
+                }
+            }
+
+            //Add everything else togather.
+            name.AddLast(string.Join('.', list));
+
+            if (Unit != null)
+                name.AddLast(Unit);
+
+            if (Unit_Descriptor != null)
+                name.AddLast(Unit_Descriptor);
+
+            return String.Join('.', name);
+
+            #endregion
+            //The OLD Way..... before I had a good idea.
+            #region the OLD Way...
             //A linked list to hold the pieces togather.
             LinkedList<string> metricName = new LinkedList<string>();
 
@@ -93,8 +160,9 @@ namespace InputsBuilder.Models
                     metricName.AddFirst(String.Join('.', Pieces.Skip(1)));
                 }
             }
-            else if (Pieces[0] == "Avg.")
+            else if (Pieces[0] == "avg.")
             {
+                metricName.AddLast(string.Join('.', Pieces.Skip(1)));
                 metricName.AddLast(Metric_Descriptor.Average);
             }
             //Measuring a unit, per second. We will assume it is referring to an average.
@@ -144,7 +212,7 @@ namespace InputsBuilder.Models
                 }
 
                 metricName.AddLast(Metric_Unit.PerSecond);
-            }            
+            }
             //Weird cases like this (which actually works....), but looks like completely horrible code
             //Really makes me hope that somebody who is more adept at determining a good magic formula...
             // can contribute to this code base.
@@ -161,6 +229,27 @@ namespace InputsBuilder.Models
                 return String.Join('.', Pieces);
             }
             return String.Join('.', metricName);
+
+            #endregion
+        }
+
+
+        private static (bool Success, string Name) parseTwoPart(string Input)
+        {
+            string ret = "";
+
+            //Lets attempt to parse this out...
+            var p = Input.Split('/');
+
+            var try_parse_unit_1 = Metric_Unit.Normalize(p[0]);
+            if (try_parse_unit_1 != null)
+            {
+                ret += p[1] + "." + try_parse_unit_1.Value;
+                return (true, ret);
+            }
+
+
+            return (false, null);
         }
     }
 }

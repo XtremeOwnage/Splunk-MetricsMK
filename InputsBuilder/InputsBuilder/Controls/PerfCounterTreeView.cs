@@ -23,7 +23,7 @@ namespace InputsBuilder.Controls
                 new BrightIdeasSoftware.OLVColumn
                 {
                     Text = "Category",
-                    Name = "Repo",                    
+                    Name = "Category",                    
                     //CheckBoxes = true,
                     AspectGetter = delegate(object x)
                     {
@@ -104,7 +104,7 @@ namespace InputsBuilder.Controls
                 {
                     Text = "Partial Metric Name",
                     Name = "MetricName",
-                    Width = 100,
+                    Width = 150,
                     AspectGetter = delegate(object x)
                     {
                         if (x is SelectedCategory cat)
@@ -118,7 +118,7 @@ namespace InputsBuilder.Controls
                 {
                     Text = "Metric Name",
                     Name = "MetricNameFull",
-                    Width = 200,
+                    Width = 300,
                     AspectGetter = delegate(object x)
                     {
                         if(x is SelectedCounter count)
@@ -155,6 +155,18 @@ namespace InputsBuilder.Controls
                     case SelectedCategory cat:
                         switch (e.Column.Name)
                         {
+                            case "Category":
+                                {
+                                    //Not editable- however, we do want to refresh the metrics.
+                                    cat.Reload();
+
+                                    //Force this particular row to fresh.
+                                    this.RefreshObject(cat);
+ 
+                                    //And- cancel "Editing"
+                                    e.Cancel = true;
+                                }
+                                break;
                             case "Interval":
                                 e.Control = new System.Windows.Forms.NumericUpDown()
                                 {
@@ -356,6 +368,9 @@ namespace InputsBuilder.Controls
                     cnt.Checked = value;
                 return value;
             };
+            #endregion
+            #region Click / Doubleclick
+
             #endregion
         }
     }

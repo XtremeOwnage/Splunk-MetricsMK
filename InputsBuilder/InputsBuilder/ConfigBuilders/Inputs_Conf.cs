@@ -101,7 +101,6 @@ TRANSFORMS-perfmonmk = {transformPrefix}{cat.Category.CategoryName}
 
         private static string transforms(IEnumerable<Models.SelectedCategory> Data)
         {
-            const string rex_AnythingExceptTab = @"([^\t]+)\t";
             //This one is used by all of the props.
             var sb = new StringBuilder()
                 .AppendLine($@"
@@ -110,8 +109,8 @@ TRANSFORMS-perfmonmk = {transformPrefix}{cat.Category.CategoryName}
 #METRIC-SCHEMA-MEASURES = _ALLNUMS_
 
 # From Splunk-Tony
-METRIC-SCHEMA-MEASURES = _NUMSEXCEPT instance
-METRIC-SCHEMA-WHITELIST-DIMS = instance, object
+METRIC-SCHEMA-MEASURES = _NUMS_EXCEPT_ instance
+METRIC-SCHEMA-WHITELIST-DIMS = instance
 ");
 
             //Select every category with any selected counter. Order by name.
@@ -120,13 +119,15 @@ METRIC-SCHEMA-WHITELIST-DIMS = instance, object
             foreach (var cat in categories)
             {
                 int cnt = cat.Counters.Where(o => o.Checked).Count();
-                sb.AppendLine($@"
-[{transformPrefix}{cat.Category.CategoryName}]
-WRITE_META = 1");
+                sb.AppendLine($@"[{transformPrefix}{cat.Category.CategoryName}]");
                 #region Build REGEX
                 //Append the static part of the REGEX
                 sb.Append(@"REGEX = collection=\""?(?<collection>[^\""\n]+)\""?\ncategory=\""?(?<category>[^\""\n]+)\""?\nobject=\""?(?<object>[^\""\n]+)\""?\n");
 
+
+                //Before anybody fusses about declaring this string on each interation- 
+                //go research what the const keyword does.
+                const string rex_AnythingExceptTab = @"([^\t]+)\t";
                 //Build the dynamic part of the regex.
                 //Description- Repeats {rex_AnythingExceptTab} N types, where N = number of counters.
                 // + 1 is present, to account for the instance field.
@@ -141,8 +142,12 @@ WRITE_META = 1");
                 //This matches the values.
                 sb.Append(rex);
 
-                //This matches the end
-                sb.AppendLine(@"\n");
+                //Remove the tailing tab.
+                sb.Remove(sb.Length - 2, 2);
+
+                ////This matches the end
+                //sb.AppendLine(@"\n");
+                sb.AppendLine();
                 #endregion
                 #region Build FORMAT
                 sb.Append(@$"FORMAT = collection::""$1"" category::""$2"" object::""$3"" instance::""${ cnt + 5}"" ");
@@ -151,6 +156,10 @@ WRITE_META = 1");
                 {
                     sb.Append(@$"""${5 + i}""::""${cnt + i + 6}"" ");
                 }
+                sb
+                    .AppendLine()
+                    .AppendLine("WRITE_META = true");
+
 
                 //Append two extra lines.... to clean up the file.
                 sb.AppendLine().AppendLine();
